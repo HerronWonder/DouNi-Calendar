@@ -343,9 +343,12 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     private var finishing=false
     private var midnight:Timer?
     private var observers:[NSObjectProtocol]=[]
+    private let smokeRoot:URL?
     override init() {
         let bundle=Bundle.main.bundleURL
-        let directory=bundle.pathExtension == "app" ? bundle.deletingLastPathComponent() : URL(fileURLWithPath:CommandLine.arguments[0]).deletingLastPathComponent()
+        let fixture=CommandLine.arguments.contains("--smoke-test") ? FileManager.default.temporaryDirectory.appendingPathComponent("douni-smoke-"+UUID().uuidString,isDirectory:true):nil
+        smokeRoot=fixture
+        let directory=fixture ?? (bundle.pathExtension == "app" ? bundle.deletingLastPathComponent() : URL(fileURLWithPath:CommandLine.arguments[0]).deletingLastPathComponent())
         let storage=Store(directory:directory)
         store=storage; settings=storage.loadSettings(); super.init()
     }
@@ -364,7 +367,9 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
         status=NSStatusBar.system.statusItem(withLength:NSStatusItem.squareLength)
         status.button?.target=self; status.button?.action=#selector(statusClick(_:))
         status.button?.sendAction(on:[.leftMouseUp,.rightMouseUp])
-        loadMonth(); setMode(.locked); clampWindow(); saveSettings()
+        loadMonth(); setMode(.locked)
+        if smokeRoot != nil { window.setFrameOrigin(NSPoint(x:-30000,y:-30000)) } else { clampWindow() }
+        saveSettings()
         window.orderFrontRegardless()
         let center=NotificationCenter.default
         for name in [NSNotification.Name.NSCalendarDayChanged,.NSSystemClockDidChange,.NSSystemTimeZoneDidChange] {
@@ -379,6 +384,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
             Task { @MainActor [weak self] in self?.checkDate() }
         })
         scheduleMidnight()
+        if smokeRoot != nil { DispatchQueue.main.async { [weak self] in self?.runSmokeTest() } }
     }
     func loadMonth() {
         cells=Day.cells(year:settings.year,month:settings.month).map { day in
@@ -520,7 +526,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     func windowDidResize(_ notification:Notification) { positionEditor(); canvas?.needsDisplay=true }
     func windowDidMove(_ notification:Notification) { if !moving { saveSettings() } }
     func clampWindow() {
-        guard let window=window else { return }
+        guard smokeRoot == nil,let window=window else { return }
         var frame=window.frame
         let screen=NSScreen.screens.first(where:{$0.visibleFrame.intersects(frame)})?.visibleFrame ?? NSScreen.main?.visibleFrame ?? frame
         frame.size.width=min(max(560,frame.width),screen.width); frame.size.height=min(max(420,frame.height),screen.height)
@@ -594,7 +600,67 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply {
         guard finishEditing(save:true) else { return .terminateCancel }; saveSettings(); return .terminateNow
     }
-    func applicationWillTerminate(_ notification:Notification) { midnight?.invalidate() }
+    func applicationWillTerminate(_ notification:Notification) { midnight?.invalidate(); cleanupSmoke() }
+    private func cleanupSmoke() {
+        guard let root=smokeRoot else { return }
+        let parent=FileManager.default.temporaryDirectory.resolvingSymlinksInPath().standardizedFileURL
+        guard root.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL == parent,
+              root.lastPathComponent.hasPrefix("douni-smoke-") else { return }
+        try? FileManager.default.removeItem(at:root)
+    }
+    private func runSmokeTest() {
+        var checks=0
+        func check(_ passed:Bool,_ message:String) {
+            checks+=1
+            if !passed {
+                FileHandle.standardError.write(Data("FAIL: AppKit smoke: \(message)\n".utf8))
+                cleanupSmoke(); exit(1)
+            }
+        }
+        check(smokeRoot != nil && store.root.deletingLastPathComponent() == smokeRoot,"isolated temporary store")
+        check(mode == .locked && window.ignoresMouseEvents,"default click-through")
+        check(!window.isOpaque && window.backgroundColor.alphaComponent == 0,"transparent native window")
+        check(window.level.rawValue == Int(CGWindowLevelForKey(.desktopIconWindow))+1,"desktop window level")
+        check(!NSScreen.screens.contains(where:{$0.frame.intersects(window.frame)}),"test window stays offscreen")
+        check(cells.count == 42,"native calendar has all date cells")
+        changeMonth(2026,11); setMode(.edit)
+        check(mode == .edit && !window.ignoresMouseEvents,"edit mode accepts interaction")
+        guard let index=cells.firstIndex(where:{$0.day==Day(2026,11,16)}) else { check(false,"test date exists"); return }
+        beginEditor(.note,index:index)
+        guard let field=editor,let scroll=editorScroll else { check(false,"native inline editor exists"); return }
+        check(!field.drawsBackground && !scroll.drawsBackground && !scroll.contentView.drawsBackground,"editor has no opaque input background")
+        check(scroll.borderType == .noBorder && scroll.documentView === field,"transparent note scroll container")
+        check(field.isVerticallyResizable && scroll.hasVerticalScroller,"long notes support native scrolling")
+        check(window.firstResponder === field,"native text view owns the caret")
+        let note=String(repeating:"中文长记事\n",count:40)+"末尾 🫘"
+        field.string=note; positionEditor()
+        field.setSelectedRange(NSRange(location:(note as NSString).length,length:0))
+        field.scrollRangeToVisible(field.selectedRange())
+        check(field.frame.height>scroll.contentSize.height,"long note expands beyond its viewport")
+        check(field.selectedRange().location == (note as NSString).length,"caret can reach the last line")
+        check(finishEditing(save:true),"inline note saves without a dialog")
+        do { check(try store.read(Day(2026,11,16)) == note,"Unicode note persists to its original date") }
+        catch { check(false,"read saved inline note: \(error)") }
+        let titleFont=font(size:20*Layout(size:canvas.bounds.size).s,numeric:true).pointSize
+        beginEditor(.fontSize)
+        check(editor?.kind == .fontSize,"font-size control opens inline")
+        editor?.string="18"
+        check(finishEditing(save:true) && settings.noteFontSize == 18,"font-size number confirms")
+        check(font(size:20*Layout(size:canvas.bounds.size).s,numeric:true).pointSize == titleFont,"note size leaves heading size unchanged")
+        beginEditor(.note,index:index)
+        check(abs((editor?.font?.pointSize ?? 0)-18*Layout(size:canvas.bounds.size).s)<0.01,"note editor receives the new size")
+        check(finishEditing(save:false),"cancel inline note without a dialog")
+        beginEditor(.fontSize); editor?.string="99"
+        check(finishEditing(save:true) && settings.noteFontSize == 18,"invalid size preserves the original")
+        finish()
+        check(mode == .locked && window.ignoresMouseEvents,"Done restores click-through")
+        check(editor == nil && editorScroll == nil,"Done releases inline controls")
+        check(Store(directory:smokeRoot!).loadSettings().noteFontSize == 18,"native settings persist")
+        check(!saveFailed,"smoke run has no save failures")
+        print("PASS: \(checks) macOS AppKit smoke checks")
+        fflush(stdout)
+        NSApp.terminate(nil)
+    }
 }
 
 enum SelfTests {

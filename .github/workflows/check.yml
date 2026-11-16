@@ -31,3 +31,6 @@ jobs:
       - name: Build both architectures and run native self-tests
         shell: bash
         run: bash src/macos/build.sh "$RUNNER_TEMP/DouNi-Calendar-macOS"
+      - name: Check native window and transparent inline editing
+        shell: bash
+        run: '"$RUNNER_TEMP/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar" --smoke-test'
