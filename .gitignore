@@ -1,0 +1,33 @@
+# Local builds and release assets are published only through GitHub Releases.
+/dist/
+/release/
+/artifacts/
+/.build/
+/tests/output/
+
+# Personal calendar data must never be committed.
+data/
+**/notes/
+**/backup/
+settings.ini
+last-error.txt
+
+# Compiler and editor output.
+.zig-cache/
+zig-cache/
+zig-out/
+.build-*/
+*.obj
+*.o
+*.pdb
+*.res
+*.exe
+*.app/
+*.dSYM/
+*.zip
+*.dmg
+*.tmp-*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

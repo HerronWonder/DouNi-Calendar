@@ -1,0 +1,33 @@
+name: Check DouNi Calendar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build Windows app
+        shell: pwsh
+        run: ./tools/build.ps1
+      - name: Check dates, storage and native UI
+        shell: pwsh
+        run: ./tools/test.ps1
+
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build both architectures and run native self-tests
+        shell: bash
+        run: bash src/macos/build.sh "$RUNNER_TEMP/DouNi-Calendar-macOS"
