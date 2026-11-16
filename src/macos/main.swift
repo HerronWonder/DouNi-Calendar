@@ -299,7 +299,7 @@ final class CalendarView: NSView {
             resizeEdges=(point.x<edge ? 1:0)|(point.x>=bounds.width-edge ? 2:0)|(point.y<edge ? 4:0)|(point.y>=bounds.height-edge ? 8:0)
             if point.x>=bounds.width-28*l.s && point.y>=bounds.height-28*l.s { resizeEdges=10 }
             if resizeEdges==0 { app.moving=true; window.performDrag(with:event); app.moving=false; app.saveSettings(); return }
-            resizeStart=window.frame; mouseStart=NSEvent.mouseLocation; return
+            app.moving=true; resizeStart=window.frame; mouseStart=NSEvent.mouseLocation; return
         }
         if point.x>=l.pad && point.x<bounds.width-l.pad && point.y>=l.top && point.y<l.top+6*l.row {
             app.beginEditor(.note,index:Int((point.y-l.top)/l.row)*7+Int((point.x-l.pad)/l.col))
@@ -316,7 +316,7 @@ final class CalendarView: NSView {
         if frame.width>=560 && frame.height>=420 { window.setFrame(frame,display:true) }
     }
     override func mouseUp(with event:NSEvent) {
-        if resizeEdges != 0 { resizeEdges=0; controller?.clampWindow(); controller?.saveSettings() }
+        if resizeEdges != 0 { resizeEdges=0; controller?.clampWindow(); controller?.moving=false; controller?.saveSettings() }
     }
     override func keyDown(with event:NSEvent) { if event.keyCode==53 { controller?.finish() } else { super.keyDown(with:event) } }
     override func setFrameSize(_ newSize:NSSize) { super.setFrameSize(newSize); controller?.positionEditor(); needsDisplay=true }
@@ -332,6 +332,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     var canvas:CalendarView!
     var status:NSStatusItem!
     var editor:InlineTextView?
+    var editorScroll:NSScrollView?
     var editingDay:Day?
     var originalYear=0,originalMonth=0
     var originalFollow=true
@@ -419,7 +420,21 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
         case .note:guard let i=cells.firstIndex(where:{$0.day==editingDay}) else { return .zero }; return l.note(i)
         }
     }
-    func positionEditor() { if let editor=editor { editor.frame=editorFrame(); editor.textContainer?.containerSize=NSSize(width:editor.frame.width,height:.greatestFiniteMagnitude) } }
+    func positionEditor() {
+        guard let editor=editor else { return }
+        if let scroll=editorScroll {
+            scroll.frame=editorFrame()
+            let viewport=scroll.contentSize
+            editor.minSize=NSSize(width:0,height:viewport.height)
+            editor.setFrameSize(NSSize(width:viewport.width,height:max(viewport.height,editor.frame.height)))
+            editor.textContainer?.containerSize=NSSize(width:viewport.width,height:.greatestFiniteMagnitude)
+            editor.sizeToFit()
+            editor.scrollRangeToVisible(editor.selectedRange())
+        } else {
+            editor.frame=editorFrame()
+            editor.textContainer?.containerSize=NSSize(width:editor.frame.width,height:.greatestFiniteMagnitude)
+        }
+    }
     func beginEditor(_ kind:EditKind,index:Int?=nil) {
         guard mode != .locked,finishEditing(save:true) else { return }
         if kind == .note { guard let i=index,cells.indices.contains(i),cells[i].readable else { return }; editingDay=cells[i].day }
@@ -427,7 +442,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
         let field=InlineTextView(frame:.zero); field.controller=self; field.kind=kind
         field.delegate=self; field.isRichText=false; field.importsGraphics=false; field.drawsBackground=false; field.backgroundColor = .clear
         field.textColor = .white; field.insertionPointColor = .white; field.textContainerInset = .zero
-        field.textContainer?.lineFragmentPadding=0; field.isHorizontallyResizable=false; field.isVerticallyResizable=false
+        field.textContainer?.lineFragmentPadding=0; field.isHorizontallyResizable=false; field.isVerticallyResizable=kind == .note
         field.isAutomaticQuoteSubstitutionEnabled=false; field.isAutomaticDashSubstitutionEnabled=false; field.isAutomaticTextReplacementEnabled=false
         field.isAutomaticSpellingCorrectionEnabled=false; field.allowsUndo=true
         let s=Layout(size:canvas.bounds.size).s
@@ -438,9 +453,22 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
         case .month:field.string=String(settings.month)
         case .fontSize:field.string=String(settings.noteFontSize)
         }
-        editor=field; positionEditor(); canvas.addSubview(field)
+        editor=field
+        if kind == .note {
+            let scroll=NSScrollView(frame:editorFrame())
+            scroll.drawsBackground=false; scroll.contentView.drawsBackground=false
+            scroll.borderType = .noBorder; scroll.hasVerticalScroller=true; scroll.hasHorizontalScroller=false
+            scroll.autohidesScrollers=true; scroll.scrollerStyle = .overlay
+            field.autoresizingMask=[.width]
+            field.maxSize=NSSize(width:.greatestFiniteMagnitude,height:.greatestFiniteMagnitude)
+            field.textContainer?.widthTracksTextView=true
+            scroll.documentView=field; editorScroll=scroll
+            canvas.addSubview(scroll)
+        } else { canvas.addSubview(field) }
+        positionEditor()
         window.makeFirstResponder(field)
         field.setSelectedRange(kind == .note ? NSRange(location:(field.string as NSString).length,length:0) : NSRange(location:0,length:(field.string as NSString).length))
+        field.scrollRangeToVisible(field.selectedRange())
         canvas.needsDisplay=true
     }
     private func number(_ text:String,kind:EditKind)->Int? {
@@ -482,7 +510,8 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
             } else { settings.year=originalYear; settings.month=originalMonth; settings.followToday=originalFollow }
             loadMonth(); saveSettings()
         }
-        field.removeFromSuperview(); editor=nil; editingDay=nil; window.makeFirstResponder(canvas); canvas.needsDisplay=true; updateStatus(); return true
+        field.removeFromSuperview(); editorScroll?.removeFromSuperview(); editorScroll=nil
+        editor=nil; editingDay=nil; window.makeFirstResponder(canvas); canvas.needsDisplay=true; updateStatus(); return true
     }
     func textDidEndEditing(_ notification:Notification) { if !finishing { _=finishEditing(save:true) } }
     func windowDidResignKey(_ notification:Notification) { _=finishEditing(save:true) }

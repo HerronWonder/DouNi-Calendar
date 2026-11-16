@@ -7,7 +7,7 @@
 请在本仓库的 **Releases** 下载对应平台的使用包：
 
 - Windows 10 / 11 x64：`DouNiCalendar-版本-Windows-x64.zip`，解压后运行 `DouNiCalendar.exe`。
-- macOS 13 及以上：`DouNiCalendar-版本-macOS-universal.zip`，解压后运行 `DouNi Calendar.app`，支持 Apple 芯片和 Intel Mac。
+- macOS 13 及以上：`DouNiCalendar-版本-macOS-universal.zip`，支持 Apple 芯片和 Intel Mac。解压后先用 Finder 将整个文件夹移到“文稿”等可写位置，再运行 `DouNi Calendar.app`。
 
 源码仓库不存放安装包、编译输出、个人记事或设置；每个平台的使用包只在 Releases 提供一份。GitHub 自动生成的 Source code 下载项是源码快照，无需与使用包一起下载。
 

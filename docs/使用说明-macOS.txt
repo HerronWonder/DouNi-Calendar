@@ -1,7 +1,8 @@
 豆泥日历 / DouNi Calendar
 
 适用于 macOS 13 或更新版本，支持 Apple 芯片和 Intel Mac。
-解压后，将“DouNi Calendar.app”和本说明放到具有写入权限的文件夹，双击应用启动。
+解压后，先通过 Finder 将整个文件夹移到“文稿”等具有写入权限的位置，再打开“DouNi Calendar.app”。
+应用需要在旁边建立 data 文件夹来保存记事。
 
 菜单栏
   左键图标：进入编辑模式；再点一次保存并完成。
