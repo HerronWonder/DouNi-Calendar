@@ -1,60 +1,125 @@
-# 豆泥日历 / DouNi Calendar
+豆泥日历 / DouNi Calendar
 
-透明、低占用的桌面记事月历。Windows 版使用原生 C++ / Win32，macOS 版使用 Swift / AppKit。
+一款轻量、透明的桌面日历，让日程和待办随时出现在桌面上，不打扰日常工作。
 
-## 下载与使用
+支持 Windows 和 macOS，无需联网，数据保存在本地。默认鼠标穿透，不影响桌面上的其他操作。
 
-请在本仓库的 **Releases** 下载对应平台的使用包：
+下载
 
-- Windows 10 / 11 x64：`DouNiCalendar-版本-Windows-x64.zip`，解压后运行 `DouNiCalendar.exe`。
-- macOS 13 及以上：`DouNiCalendar-版本-macOS-universal.zip`，支持 Apple 芯片和 Intel Mac。解压后先用 Finder 将整个文件夹移到“文稿”等可写位置，再运行 `DouNi Calendar.app`。
+前往 Releases 下载最新版本。
 
-源码仓库不存放安装包、编译输出、个人记事或设置；每个平台的使用包只在 Releases 提供一份。GitHub 自动生成的 Source code 下载项是源码快照，无需与使用包一起下载。
+系统
 
-默认透明并穿透鼠标。左键托盘或菜单栏图标进入编辑，再点一次保存并完成；右键打开菜单。支持编辑模式、移动与缩放、手绘风格、字体大小、显示节假日、登录启动和退出。
+下载文件
 
-日期固定七列六行，补全上月和下月，非本月日期淡显。记事在日期格内透明编辑，Enter 保存，Shift+Enter 换行；点击右上角“完成”保存并恢复穿透。年月支持原位输入，左右箭头切月，闹钟图标回到今天，旁边显示今天的星期。非法输入还原，不显示对话框。“字体大小”以数字输入，Enter 确认，仅调整记事文字，支持 8—32。
+Windows 10 / 11（64 位）
 
-所有数据保存在程序旁的 `data` 文件夹。Mac 的 `data` 位于 `.app` 同级，不在应用包内部。记事为 UTF-8 文本，保存采用原子替换，并保留最近一版备份。迁移前退出程序，复制应用和整个 `data`；更新只替换应用，保留原有 `data`。
+DouNiCalendar-版本-Windows-x64.zip
 
-```
-src/windows/     Windows C++17 源码与资源
-src/macos/       macOS Swift 源码与应用资源
-tests/           日期、存储和 Windows 内部窗口测试
-tools/           Windows 构建、测试和使用包脚本
-docs/            两个平台的使用说明和发布说明
-.github/         两个平台构建及 Release 发布流程
-```
+macOS 13+（Apple 芯片 / Intel）
 
-运行时只依赖各平台系统框架。空闲时等待系统事件，无持续绘制或逐秒轮询；样式和节日标注均离线处理。
+DouNiCalendar-版本-macOS-universal.zip
 
-农历节日和清明支持 1901—2100 年，固定公历节日不受此范围限制。仅显示节日名称，不代表放假或调休安排。离线日期表由 [Microsoft ChineseLunisolarCalendar](https://learn.microsoft.com/en-us/dotnet/api/system.globalization.chineselunisolarcalendar) 生成，并参考[香港天文台公历与农历日期对照表](https://www.hko.gov.hk/tc/gts/time/conversion.htm)核对。
+Windows： 解压后双击 DouNiCalendar.exe 即可运行。
 
-## 从源码构建
+macOS： 解压后，将整个文件夹移动到“文稿”等可写位置，再打开 DouNi Calendar.app。首次打开时，可能需要按照系统提示确认开发者来源。
 
-Windows 在 PowerShell 中运行：
+请下载对应系统的 ZIP 使用包。GitHub 自动提供的 Source code 是源代码，不是可直接运行的程序。
 
-```powershell
-./tools/build.ps1 -ZigPath 'C:\path\to\zig.exe'
-./tools/test.ps1 -ZigPath 'C:\path\to\zig.exe'
-./tools/package-windows.ps1 -Version '1.0.0'
-```
+功能介绍
 
-构建使用 Zig 0.15.2；省略路径时查找已有编译器，需要下载时校验官方 SHA-256。中间文件位于 TEMP，成品输出到 `dist/豆泥日历`，使用包输出到 `release`。构建前先退出日历，脚本验证 Windows GUI 子系统后原子替换 exe。打包脚本只允许主程序和使用说明进入压缩包，排除个人 `data`。
+透明桌面日历：直接显示在桌面上，默认不拦截鼠标操作。
 
-macOS 需要 Xcode Command Line Tools，在终端运行：
+日期记事：点击日期即可记录待办、日程和备忘。
 
-```sh
-DOUNI_VERSION=1.0.0 bash src/macos/build.sh "$PWD/dist/DouNi-Calendar-macOS"
-"dist/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar" --self-test
-```
+快速编辑：通过系统托盘或菜单栏图标切换编辑模式，完成后自动恢复鼠标穿透。
 
-脚本分别编译 arm64 和 x86_64，再合并为 Universal 应用，并进行本地签名检查。未配置 Apple Developer ID 签名及公证，macOS 可能要求按系统流程确认开发者来源。
+自由调整：支持移动位置、缩放日历、调整记事字体大小（8～32）。
 
-Windows 的 `main.cpp` 管理窗口、绘制与托盘，`inline_editor.cpp` 提供无边框原位编辑控件，`dates.cpp` 管理日期格和节日标注，`storage.cpp` 管理本地文件。测试使用隐藏自有窗口和独立临时数据，不修改个人记事或自启动项。Mac 的 `--self-test` 使用独立临时目录验证日期和存储，不启动日历界面。
+月份切换：使用左右箭头浏览月份，也可以直接输入年月，点击闹钟图标快速回到今天。
 
-“编辑模式”启用年月导航和日期格记事，完成后恢复点击穿透。内部测试不等同于真实桌面鼠标验收；穿透、托盘或菜单栏、显示桌面及多屏热插拔仍需在目标电脑实际检查。
+节日显示：支持公历节日、农历节日和清明节，可自行开启或关闭。
 
-## 发布
+手绘风格：可切换日历外观。
 
-推送 `v版本号` 标签触发 `.github/workflows/release.yml`，也可对已存在的标签手动运行。两个平台构建和测试均成功后，流程创建或更新对应 Release，每个平台保留一个同名使用包，重跑会替换同名资产，不额外上传 exe、app 或源码压缩包。
+开机自启：支持登录系统后自动启动。
+
+本地离线：无需注册账号，不依赖网络服务。
+
+日历采用固定的七列六行布局，自动补全相邻月份的日期，非当前月份的日期会淡化显示。
+
+如何使用
+
+编辑记事
+
+左键点击 Windows 系统托盘或 macOS 菜单栏中的豆泥日历图标，进入编辑模式。
+
+点击想要记录的日期，直接输入内容。
+
+按 Enter 保存当前记事，按 Shift + Enter 换行。
+
+点击日历右上角的“完成”，或再次左键点击程序图标，保存并退出编辑模式。
+
+退出编辑模式后，日历会恢复鼠标穿透，不影响点击桌面图标和其他窗口。
+
+调整日历
+
+进入编辑模式后，可以移动、缩放日历，切换月份以及修改记事。
+
+右键点击托盘或菜单栏图标，可以打开功能菜单，调整显示风格、字体大小、节假日显示和开机启动等选项。
+
+数据保存与备份
+
+豆泥日历的记事和设置全部保存在本地，不会上传到服务器。
+
+程序旁边的 data 文件夹用于保存个人数据。macOS 的 data 文件夹位于 .app 应用同级，而不是应用包内部。
+
+更新版本：退出日历后，只替换程序文件，保留原来的 data 文件夹。
+
+迁移到其他电脑：退出程序后，复制程序和整个 data 文件夹。
+
+备份记事：直接备份 data 文件夹即可。
+
+记事使用 UTF-8 文本格式保存，并保留最近一版备份，降低意外写入失败造成数据丢失的风险。
+
+请不要在程序运行时移动或删除 data 文件夹。
+
+fast Q&A
+
+为什么点击日历没有反应？
+
+这是正常的。日历默认处于透明模式，不影响其他桌面操作。左键点击系统托盘或菜单栏中的程序图标，即可进入编辑模式。
+
+关闭编辑模式后，记事还在吗？
+
+在编辑模式中保存的内容会保存在本地。下次启动程序时仍可查看。
+
+软件需要联网吗？
+
+不需要。日历显示、记事保存和节日查询均可离线使用。
+
+显示的节日是不是法定假期？
+
+不是。软件仅显示节日名称，不提供法定放假和调休安排。农历节日与清明节支持 1901～2100 年。
+
+更新软件会丢失记事吗？
+
+只要保留原有的 data 文件夹，正常替换程序不会清除记事。建议更新前先备份重要内容。
+
+macOS 提示无法验证开发者怎么办？
+
+目前 macOS 版本未进行 Apple Developer ID 签名及公证。首次启动可能受到系统安全限制，请确认程序来源可信，再根据 macOS 系统提示进行操作。
+
+开源项目
+
+豆泥日历采用原生技术开发：
+
+Windows：C++17 / Win32
+
+macOS：Swift / AppKit
+
+不需要额外安装运行环境。程序空闲时等待系统事件，不进行持续绘制或逐秒轮询，尽可能减少后台资源占用。
+
+欢迎通过 GitHub Issues 反馈问题和提出建议。
+
+让日历安静地待在桌面上，需要的时候，随手记下一点生活。
