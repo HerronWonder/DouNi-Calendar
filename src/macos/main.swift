@@ -126,7 +126,9 @@ enum Holidays {
         if day.month == 10 && day.day == 1 { names.append("国庆") }
         guard let date = day.date, (1901...2100).contains(day.year) else { return names.joined(separator: "·") }
         var lunar = Calendar(identifier: .chinese); lunar.timeZone = .autoupdatingCurrent
-        let parts = lunar.dateComponents([.month, .day, .isLeapMonth], from: date)
+        // The complete components API carries isLeapMonth on macOS 13;
+        // requesting Calendar.Component.isLeapMonth directly requires 14.
+        let parts = lunar.dateComponents(in: lunar.timeZone, from: date)
         if parts.isLeapMonth != true {
             switch (parts.month ?? 0, parts.day ?? 0) {
             case (1, 1): names.append("春节")
@@ -268,7 +270,7 @@ final class CalendarView: NSView {
         }
         path.close(); path.lineWidth=1.8*Layout(size:bounds.size).s; path.lineJoinStyle = .round
         NSColor(calibratedRed:1,green:0.85,blue:0.45,alpha:0.96).setStroke(); path.stroke()
-        let shifted=path.copy() as! NSBezierPath; let transform=AffineTransform(translationByX:0.7,yBy:0.7); shifted.transform(using:transform)
+        let shifted=path.copy() as! NSBezierPath; let transform=AffineTransform(translationByX:0.7,byY:0.7); shifted.transform(using:transform)
         shifted.lineWidth=0.7*Layout(size:bounds.size).s; NSColor(calibratedRed:1,green:0.91,blue:0.64,alpha:0.5).setStroke(); shifted.stroke()
     }
     private func arrow(_ rect:NSRect,forward:Bool,app:AppController) {
@@ -427,12 +429,12 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
             let viewport=scroll.contentSize
             editor.minSize=NSSize(width:0,height:viewport.height)
             editor.setFrameSize(NSSize(width:viewport.width,height:max(viewport.height,editor.frame.height)))
-            editor.textContainer?.containerSize=NSSize(width:viewport.width,height:.greatestFiniteMagnitude)
+            editor.textContainer?.containerSize=NSSize(width:viewport.width,height:CGFloat.greatestFiniteMagnitude)
             editor.sizeToFit()
             editor.scrollRangeToVisible(editor.selectedRange())
         } else {
             editor.frame=editorFrame()
-            editor.textContainer?.containerSize=NSSize(width:editor.frame.width,height:.greatestFiniteMagnitude)
+            editor.textContainer?.containerSize=NSSize(width:editor.frame.width,height:CGFloat.greatestFiniteMagnitude)
         }
     }
     func beginEditor(_ kind:EditKind,index:Int?=nil) {
@@ -460,7 +462,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
             scroll.borderType = .noBorder; scroll.hasVerticalScroller=true; scroll.hasHorizontalScroller=false
             scroll.autohidesScrollers=true; scroll.scrollerStyle = .overlay
             field.autoresizingMask=[.width]
-            field.maxSize=NSSize(width:.greatestFiniteMagnitude,height:.greatestFiniteMagnitude)
+            field.maxSize=NSSize(width:CGFloat.greatestFiniteMagnitude,height:CGFloat.greatestFiniteMagnitude)
             field.textContainer?.widthTracksTextView=true
             scroll.documentView=field; editorScroll=scroll
             canvas.addSubview(scroll)
@@ -616,6 +618,8 @@ enum SelfTests {
         check(Holidays.label(Day(2026,6,19)).contains("端午"),"Dragon Boat 2026")
         check(Holidays.label(Day(2026,9,25)).contains("中秋"),"Mid-Autumn 2026")
         check(Holidays.label(Day(2026,4,5)).contains("清明"),"Qingming 2026")
+        check(Holidays.label(Day(2009,5,28)).contains("端午"),"regular fifth lunar month is marked")
+        check(!Holidays.label(Day(2009,6,27)).contains("端午"),"leap fifth lunar month is not marked")
         let fixture=FileManager.default.temporaryDirectory.appendingPathComponent("douni-tests-"+UUID().uuidString,isDirectory:true)
         defer { try? FileManager.default.removeItem(at:fixture) }
         let store=Store(directory:fixture),day=Day(2026,11,16)
