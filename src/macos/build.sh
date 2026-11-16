@@ -25,7 +25,7 @@ for architecture in arm64 x86_64; do
 done
 xcrun lipo -create "$build_dir/DouNiCalendar-arm64" "$build_dir/DouNiCalendar-x86_64" \
     -output "$app/Contents/MacOS/DouNiCalendar"
-xcrun lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/DouNiCalendar"
+xcrun lipo "$app/Contents/MacOS/DouNiCalendar" -verify_arch arm64 x86_64
 codesign --force --sign - "$app"
 codesign --verify --strict "$app"
 "$app/Contents/MacOS/DouNiCalendar" --self-test

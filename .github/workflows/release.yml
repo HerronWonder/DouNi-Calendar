@@ -86,7 +86,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          lipo -verify_arch arm64 x86_64 "dist/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar"
+          lipo "dist/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "dist/DouNi-Calendar-macOS/DouNi Calendar.app"
       - name: Test macOS date and storage logic
         shell: bash
