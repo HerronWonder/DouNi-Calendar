@@ -14,17 +14,17 @@
 
 Windows 10 / 11（64 位）
 
-DouNiCalendar-版本-Windows-x64.zip
+DouNiCalendar-版本-Windows-x64-Setup.exe
 
 macOS 13+（Apple 芯片 / Intel）
 
 DouNiCalendar-版本-macOS-universal.zip
 
-Windows： 解压后双击 DouNiCalendar.exe 即可运行。
+Windows： 运行安装包，选择安装目录，并按需勾选“开机启动”。安装后从开始菜单打开豆泥日历。
 
 macOS： 解压后，将整个文件夹移动到“文稿”等可写位置，再打开 DouNi Calendar.app。首次打开时，可能需要按照系统提示确认开发者来源。
 
-请下载对应系统的 ZIP 使用包。GitHub 自动提供的 Source code 是源代码，不是可直接运行的程序。
+Windows 下载 Setup.exe 安装包，macOS 下载 ZIP 使用包。GitHub 自动提供的 Source code 是源代码，不是可直接运行的程序。
 
 功能介绍
 
@@ -42,7 +42,7 @@ macOS： 解压后，将整个文件夹移动到“文稿”等可写位置，�
 
 手绘风格：可切换日历外观。
 
-开机自启：支持登录系统后自动启动。
+开机自启：Windows 安装时可勾选，由安装脚本在当前用户的启动文件夹添加快捷方式；之后也可以通过程序菜单开关。macOS 支持登录启动。
 
 本地离线：无需注册账号，不依赖网络服务。
 
@@ -74,7 +74,7 @@ macOS： 解压后，将整个文件夹移动到“文稿”等可写位置，�
 
 程序旁边的 data 文件夹用于保存个人数据。macOS 的 data 文件夹位于 .app 应用同级，而不是应用包内部。
 
-更新版本：退出日历后，只替换程序文件，保留原来的 data 文件夹。
+更新版本：Windows 运行新安装包并选择原目录；macOS 退出日历后替换应用。保留原来的 data 文件夹。Windows 卸载时也会保留个人 data。
 
 迁移到其他电脑：退出程序后，复制程序和整个 data 文件夹。
 
@@ -117,6 +117,8 @@ macOS 提示无法验证开发者怎么办？
 Windows：C++17 / Win32
 
 macOS：Swift / AppKit
+
+源码构建方法见 [构建说明](docs/构建.md)。
 
 不需要额外安装运行环境。程序空闲时等待系统事件，不进行持续绘制或逐秒轮询，尽可能减少后台资源占用。
 

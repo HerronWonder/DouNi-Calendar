@@ -9,6 +9,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <objidl.h>
 #include <gdiplus.h>
 #include <algorithm>
@@ -418,7 +419,6 @@ bool SetMode(Mode value) {
 }
 bool Finish() { if (!inlineedit::Finish(true)) return false; SaveSettings(); return SetMode(Mode::Locked); }
 void ToggleEdit() { if (mode==Mode::Edit) Finish(); else SetMode(Mode::Edit); }
-std::wstring AutostartCommand() { return L"\""+executablePath+L"\""; }
 bool SameExecutableCommand(std::wstring command,const std::wstring& path) {
     if (command.size()>=2&&command.front()==L'"'&&command.back()==L'"')
         command=command.substr(1,command.size()-2);
@@ -436,53 +436,67 @@ bool IsLegacyAutostartCommand(const std::wstring& command) {
     if (folder!=L"豆泥日历"&&folder!=L"DouNi Calendar") return false;
     return SameExecutableCommand(command,directory.substr(0,parentSlash)+L"\\桌面日历\\DesktopCalendar.exe");
 }
-bool HasMatchingLegacyAutostart(HKEY key) {
-    wchar_t value[32768]={}; DWORD size=sizeof(value),type=0;
-    LONG result=RegQueryValueExW(key,L"DesktopNoteCalendar",nullptr,&type,reinterpret_cast<BYTE*>(value),&size);
-    value[ARRAYSIZE(value)-1]=0;
-    return result==ERROR_SUCCESS&&type==REG_SZ&&IsLegacyAutostartCommand(value);
+std::wstring StartupShortcutPath() {
+    wchar_t folder[MAX_PATH]={};
+    if (FAILED(SHGetFolderPathW(nullptr,CSIDL_STARTUP,nullptr,SHGFP_TYPE_CURRENT,folder))) return L"";
+    return std::wstring(folder)+L"\\DouNi Calendar.lnk";
 }
-bool IsAutostart() {
-    HKEY key; if (RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,KEY_QUERY_VALUE,&key)!=ERROR_SUCCESS) return false;
-    wchar_t value[32768]={}; DWORD size=sizeof(value),type=0;
-    LONG result=RegQueryValueExW(key,L"DouNiCalendar",nullptr,&type,reinterpret_cast<BYTE*>(value),&size); RegCloseKey(key);
-    value[ARRAYSIZE(value)-1]=0; return result==ERROR_SUCCESS&&type==REG_SZ&&AutostartCommand()==value;
-}
-void ToggleAutostart() {
-    bool enabled=IsAutostart(); HKEY key;
-    LONG result=RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,nullptr,0,KEY_SET_VALUE|KEY_QUERY_VALUE,nullptr,&key,nullptr);
-    if (result==ERROR_SUCCESS) {
-        if (enabled) result=RegDeleteValueW(key,L"DouNiCalendar");
-        else {
-            auto cmd=AutostartCommand(); result=RegSetValueExW(key,L"DouNiCalendar",0,REG_SZ,reinterpret_cast<const BYTE*>(cmd.c_str()),DWORD((cmd.size()+1)*sizeof(wchar_t)));
-            if (result==ERROR_SUCCESS&&HasMatchingLegacyAutostart(key))
-                result=RegDeleteValueW(key,L"DesktopNoteCalendar");
-        }
-        RegCloseKey(key);
+bool StartupShortcut(bool save) {
+    const std::wstring path=StartupShortcutPath(); if (path.empty()) return false;
+    if (!save&&GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES) return false;
+    const HRESULT initialized=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    if (FAILED(initialized)&&initialized!=RPC_E_CHANGED_MODE) return false;
+    const CLSID linkClass={0x00021401,0,0,{0xc0,0,0,0,0,0,0,0x46}};
+    const IID linkInterface={0x000214f9,0,0,{0xc0,0,0,0,0,0,0,0x46}};
+    const IID fileInterface={0x0000010b,0,0,{0xc0,0,0,0,0,0,0,0x46}};
+    IShellLinkW* link=nullptr; IPersistFile* file=nullptr;
+    HRESULT result=CoCreateInstance(linkClass,nullptr,CLSCTX_INPROC_SERVER,linkInterface,reinterpret_cast<void**>(&link));
+    if (SUCCEEDED(result)) result=link->QueryInterface(fileInterface,reinterpret_cast<void**>(&file));
+    if (SUCCEEDED(result)&&save) {
+        const std::wstring directory=executablePath.substr(0,executablePath.find_last_of(L"\\/"));
+        result=link->SetPath(executablePath.c_str());
+        if (SUCCEEDED(result)) result=link->SetWorkingDirectory(directory.c_str());
+        if (SUCCEEDED(result)) result=link->SetDescription(AppName);
+        if (SUCCEEDED(result)) result=link->SetShowCmd(SW_SHOWNORMAL);
+        if (SUCCEEDED(result)) result=file->Save(path.c_str(),TRUE);
+    } else if (SUCCEEDED(result)) {
+        result=file->Load(path.c_str(),STGM_READ);
+        wchar_t target[32768]={};
+        if (SUCCEEDED(result)) result=link->GetPath(target,ARRAYSIZE(target),nullptr,SLGP_RAWPATH);
+        if (SUCCEEDED(result)&&!SameExecutableCommand(target,executablePath)) result=E_FAIL;
     }
-    if (result!=ERROR_SUCCESS) RememberError(L"无法设置开机启动");
+    if (file) file->Release(); if (link) link->Release();
+    if (SUCCEEDED(initialized)) CoUninitialize();
+    return SUCCEEDED(result);
 }
-void MigrateLegacyAutostart() {
+bool IsAutostart() { return StartupShortcut(false); }
+bool OwnRunValue(HKEY key,const wchar_t* name) {
+    wchar_t value[32768]={}; DWORD size=sizeof(value),type=0;
+    LONG result=RegQueryValueExW(key,name,nullptr,&type,reinterpret_cast<BYTE*>(value),&size);
+    value[ARRAYSIZE(value)-1]=0;
+    return result==ERROR_SUCCESS&&type==REG_SZ&&
+        (SameExecutableCommand(value,executablePath)||IsLegacyAutostartCommand(value));
+}
+void RemoveOwnRunValues() {
     HKEY key;
     if (RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,
         KEY_QUERY_VALUE|KEY_SET_VALUE,&key)!=ERROR_SUCCESS) return;
-    if (!HasMatchingLegacyAutostart(key)) { RegCloseKey(key); return; }
-    wchar_t value[32768]={}; DWORD size=sizeof(value),type=0;
-    LONG result=RegQueryValueExW(key,L"DouNiCalendar",nullptr,&type,reinterpret_cast<BYTE*>(value),&size);
-    value[ARRAYSIZE(value)-1]=0;
-    if (result!=ERROR_FILE_NOT_FOUND&&
-        !(result==ERROR_SUCCESS&&type==REG_SZ&&SameExecutableCommand(value,executablePath))) {
-        RegCloseKey(key); return;
-    }
-    if (result==ERROR_FILE_NOT_FOUND) {
-        const auto command=AutostartCommand();
-        result=RegSetValueExW(key,L"DouNiCalendar",0,REG_SZ,
-            reinterpret_cast<const BYTE*>(command.c_str()),DWORD((command.size()+1)*sizeof(wchar_t)));
-    }
-    if (result==ERROR_SUCCESS&&HasMatchingLegacyAutostart(key))
-        result=RegDeleteValueW(key,L"DesktopNoteCalendar");
+    for (const wchar_t* name:{L"DouNiCalendar",L"DesktopNoteCalendar"})
+        if (OwnRunValue(key,name)) RegDeleteValueW(key,name);
     RegCloseKey(key);
-    if (result!=ERROR_SUCCESS) lastError=L"无法迁移开机启动设置";
+}
+void ToggleAutostart() {
+    const bool enabled=IsAutostart();
+    const bool changed=enabled ? DeleteFileW(StartupShortcutPath().c_str())!=FALSE : StartupShortcut(true);
+    if (changed) RemoveOwnRunValues(); else RememberError(L"无法设置开机启动");
+}
+void MigrateLegacyAutostart() {
+    HKEY key;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,L"Software\\Microsoft\\Windows\\CurrentVersion\\Run",0,KEY_QUERY_VALUE,&key)!=ERROR_SUCCESS) return;
+    const bool previous=OwnRunValue(key,L"DouNiCalendar")||OwnRunValue(key,L"DesktopNoteCalendar");
+    RegCloseKey(key);
+    if (GetFileAttributesW(StartupShortcutPath().c_str())!=INVALID_FILE_ATTRIBUTES&&!IsAutostart()) return;
+    if (previous&&(IsAutostart()||StartupShortcut(true))) RemoveOwnRunValues();
 }
 HMENU CreateTrayMenu() {
     HMENU menu=CreatePopupMenu();

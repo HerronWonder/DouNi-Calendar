@@ -9,7 +9,7 @@ on:
       tag:
         description: Existing release tag, for example v1.0.0
         required: true
-        default: v1.0.0
+        default: v1.0.1
         type: string
 
 permissions:
@@ -57,11 +57,11 @@ jobs:
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
-        run: ./tools/package-windows.ps1 -Version $env:RELEASE_VERSION
+        run: ./tools/build-installer.ps1 -Version $env:RELEASE_VERSION
       - uses: actions/upload-artifact@v4
         with:
           name: windows-package
-          path: release/DouNiCalendar-*-Windows-x64.zip
+          path: release/DouNiCalendar-*-Windows-x64-Setup.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -132,7 +132,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail
-          windows="release/DouNiCalendar-${RELEASE_VERSION}-Windows-x64.zip"
+          windows="release/DouNiCalendar-${RELEASE_VERSION}-Windows-x64-Setup.exe"
           macos="release/DouNiCalendar-${RELEASE_VERSION}-macOS-universal.zip"
           test -f "$windows" && test -f "$macos"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
