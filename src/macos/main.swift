@@ -343,6 +343,7 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     private var finishing=false
     private var midnight:Timer?
     private var observers:[NSObjectProtocol]=[]
+    private var outsideClickMonitor:Any?
     private let smokeRoot:URL?
     override init() {
         let bundle=Bundle.main.bundleURL
@@ -405,6 +406,17 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
         window.ignoresMouseEvents=value == .locked
         window.level=value == .locked ? NSWindow.Level(rawValue:Int(CGWindowLevelForKey(.desktopIconWindow))+1) : .normal
         if value != .locked { NSApp.activate(ignoringOtherApps:true); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(canvas) }
+        if value == .locked {
+            if let monitor=outsideClickMonitor { NSEvent.removeMonitor(monitor); outsideClickMonitor=nil }
+        } else if outsideClickMonitor == nil {
+            // Observe other apps and the desktop without consuming their click.
+            outsideClickMonitor=NSEvent.addGlobalMonitorForEvents(matching:[.leftMouseDown,.rightMouseDown,.otherMouseDown]) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self=self,self.mode != .locked else { return }
+                    self.finish()
+                }
+            }
+        }
         canvas.needsDisplay=true; updateStatus()
     }
     func finish() { guard finishEditing(save:true) else { return }; saveSettings(); setMode(.locked) }
@@ -600,7 +612,11 @@ final class AppController: NSObject,NSApplicationDelegate,NSWindowDelegate,NSTex
     func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply {
         guard finishEditing(save:true) else { return .terminateCancel }; saveSettings(); return .terminateNow
     }
-    func applicationWillTerminate(_ notification:Notification) { midnight?.invalidate(); cleanupSmoke() }
+    func applicationWillTerminate(_ notification:Notification) {
+        midnight?.invalidate()
+        if let monitor=outsideClickMonitor { NSEvent.removeMonitor(monitor) }
+        cleanupSmoke()
+    }
     private func cleanupSmoke() {
         guard let root=smokeRoot else { return }
         let parent=FileManager.default.temporaryDirectory.resolvingSymlinksInPath().standardizedFileURL

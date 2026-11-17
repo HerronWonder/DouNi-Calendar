@@ -28,7 +28,6 @@ xcrun lipo -create "$build_dir/DouNiCalendar-arm64" "$build_dir/DouNiCalendar-x8
 xcrun lipo "$app/Contents/MacOS/DouNiCalendar" -verify_arch arm64 x86_64
 codesign --force --sign - "$app"
 codesign --verify --strict "$app"
-"$app/Contents/MacOS/DouNiCalendar" --self-test
 if [[ -e "$output_dir/DouNi Calendar.app" ]]; then
     echo "Output already exists: $output_dir/DouNi Calendar.app" >&2
     exit 1

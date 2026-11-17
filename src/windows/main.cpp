@@ -26,7 +26,7 @@ namespace {
 constexpr wchar_t AppName[]=L"豆泥日历";
 constexpr wchar_t MainClass[]=L"DouNiCalendar.Window";
 constexpr wchar_t MenuClass[]=L"DouNiCalendar.Menu";
-constexpr UINT TrayMessage=WM_APP+1,BringBack=WM_APP+2,DesktopChanged=WM_APP+3,PaintAgain=WM_APP+4;
+constexpr UINT TrayMessage=WM_APP+1,BringBack=WM_APP+2,DesktopChanged=WM_APP+3,PaintAgain=WM_APP+4,OutsideClick=WM_APP+5;
 constexpr UINT_PTR MidnightTimer=1,ShellRetryTimer=2;
 enum class Mode { Locked,Edit,Transform };
 enum Command { EditMode=101,TransformMode,Handwritten,FontSizeCommand,Holidays,Autostart,Quit };
@@ -43,6 +43,7 @@ std::wstring executablePath,lastError;
 NOTIFYICONDATAW tray={};
 UINT taskbarCreated=0;
 HWINEVENTHOOK foregroundHook=nullptr,minimizeHook=nullptr;
+HHOOK outsideClickHook=nullptr;
 bool ready=false,closing=false,menuOpen=false,desktopUpdateQueued=false;
 float scale=1.f;
 inlineedit::Kind editingKind=inlineedit::Kind::Note;
@@ -391,9 +392,22 @@ void AddTray() {
     if (!Shell_NotifyIconW(NIM_ADD,&tray)) { SetTimer(mainWindow,ShellRetryTimer,3000,nullptr); return; }
     KillTimer(mainWindow,ShellRetryTimer); tray.uVersion=NOTIFYICON_VERSION_4; Shell_NotifyIconW(NIM_SETVERSION,&tray); UpdateTray();
 }
+LRESULT CALLBACK OutsideMouse(int code,WPARAM wp,LPARAM lp) {
+    if (code>=0&&!menuOpen&&(wp==WM_LBUTTONDOWN||wp==WM_RBUTTONDOWN||wp==WM_MBUTTONDOWN)) {
+        POINT p=reinterpret_cast<MSLLHOOKSTRUCT*>(lp)->pt;
+        HWND owner=GetAncestor(WindowFromPoint(p),GA_ROOTOWNER);
+        NOTIFYICONIDENTIFIER icon={sizeof(icon)}; icon.hWnd=mainWindow; icon.uID=tray.uID;
+        RECT bounds={}; Shell_NotifyIconGetRect(&icon,&bounds);
+        if (owner!=mainWindow&&owner!=menuWindow&&!PtInRect(&bounds,p))
+            PostMessageW(mainWindow,OutsideClick,0,0);
+    }
+    return CallNextHookEx(outsideClickHook,code,wp,lp);
+}
 bool SetMode(Mode value) {
     if (!inlineedit::Finish(true)) return false;
     mode=value;
+    if (Interactive()&&!outsideClickHook) outsideClickHook=SetWindowsHookExW(WH_MOUSE_LL,OutsideMouse,instance,0);
+    else if (!Interactive()&&outsideClickHook) { UnhookWindowsHookEx(outsideClickHook); outsideClickHook=nullptr; }
     LONG_PTR style=GetWindowLongPtrW(mainWindow,GWL_STYLE); style=mode==Mode::Transform?style|WS_THICKFRAME:style&~WS_THICKFRAME;
     SetWindowLongPtrW(mainWindow,GWL_STYLE,style);
     LONG_PTR ex=GetWindowLongPtrW(mainWindow,GWL_EXSTYLE); ex=Interactive()?ex&~(WS_EX_TRANSPARENT|WS_EX_NOACTIVATE):ex|WS_EX_TRANSPARENT|WS_EX_NOACTIVATE;
@@ -521,6 +535,7 @@ LRESULT CALLBACK MainProc(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: { PAINTSTRUCT paint; BeginPaint(hwnd,&paint); EndPaint(hwnd,&paint); return 0; }
     case PaintAgain: Render(); return 0;
+    case OutsideClick: if (Interactive()) Finish(); return 0;
     case TrayMessage:
         if (LOWORD(lp)==NIN_SELECT||LOWORD(lp)==NIN_KEYSELECT) ToggleEdit(); else if (LOWORD(lp)==WM_CONTEXTMENU) ShowMenu(); return 0;
     case BringBack: SetMode(Mode::Edit); return 0;
@@ -575,6 +590,7 @@ LRESULT CALLBACK MainProc(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
     case WM_ENDSESSION: if (wp) { closing=true; DestroyWindow(hwnd); } return 0;
     case WM_CLOSE: if (!inlineedit::Finish(true)) return 0; closing=true; SaveSettings(); DestroyWindow(hwnd); return 0;
     case WM_DESTROY:
+        if (outsideClickHook) UnhookWindowsHookEx(outsideClickHook);
         inlineedit::Shutdown(); KillTimer(hwnd,MidnightTimer); KillTimer(hwnd,ShellRetryTimer);
         if (foregroundHook) UnhookWinEvent(foregroundHook); if (minimizeHook) UnhookWinEvent(minimizeHook);
         Shell_NotifyIconW(NIM_DELETE,&tray); PostQuitMessage(0); return 0;

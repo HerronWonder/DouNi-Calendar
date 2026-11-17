@@ -28,9 +28,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Build both architectures and run native self-tests
+      - name: Build both architectures
         shell: bash
         run: bash src/macos/build.sh "$RUNNER_TEMP/DouNi-Calendar-macOS"
+      - name: Check dates and storage
+        shell: bash
+        run: '"$RUNNER_TEMP/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar" --self-test'
       - name: Check native window and transparent inline editing
         shell: bash
         run: '"$RUNNER_TEMP/DouNi-Calendar-macOS/DouNi Calendar.app/Contents/MacOS/DouNiCalendar" --smoke-test'
